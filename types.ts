@@ -1,9 +1,14 @@
 
+
 export interface StoryStep {
-  prompt: string;
+  id: string;
+  parentId: string | null;
   narrative: string;
   imageUrl: string;
-  choiceMade: string;
+  choiceMade: string; // The choice from parent that led to this step
+  promptForStep: string; // The narrative from parent used to generate this
+  choices: Choice[];
+  childrenIds: { [choiceText: string]: string };
 }
 
 export interface Choice {

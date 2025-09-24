@@ -1,5 +1,4 @@
-
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { StartScreen } from './components/StartScreen';
 import { AdventureScreen } from './components/AdventureScreen';
 import { Modal } from './components/Modal';
@@ -14,8 +13,11 @@ enum GameState {
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.Start);
-  const [storyHistory, setStoryHistory] = useState<StoryStep[]>([]);
-  const [currentChoices, setCurrentChoices] = useState<Choice[]>([]);
+  // New state for branching story tree
+  const [storyNodes, setStoryNodes] = useState<{ [id: string]: StoryStep }>({});
+  const [rootNodeId, setRootNodeId] = useState<string | null>(null);
+  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+  
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   
   const [isLoreModalOpen, setIsLoreModalOpen] = useState<boolean>(false);
@@ -38,6 +40,25 @@ const App: React.FC = () => {
   const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedBrowserVoiceURI, setSelectedBrowserVoiceURI] = useState<string | null>(null);
 
+  // Helper to derive the current linear path from the story tree
+  const storyHistory = useMemo(() => {
+    if (!currentNodeId || Object.keys(storyNodes).length === 0) return [];
+    const path: StoryStep[] = [];
+    let currentId: string | null = currentNodeId;
+    while (currentId) {
+        const node = storyNodes[currentId];
+        if (node) {
+            path.unshift(node);
+            currentId = node.parentId;
+        } else {
+            break;
+        }
+    }
+    return path;
+  }, [currentNodeId, storyNodes]);
+
+  const currentStep = currentNodeId ? storyNodes[currentNodeId] : null;
+  const currentChoices = currentStep ? currentStep.choices : [];
 
   // Check for browser TTS support and load voices on mount
   useEffect(() => {
@@ -49,7 +70,6 @@ const App: React.FC = () => {
             const voices = window.speechSynthesis.getVoices();
             if (voices.length > 0) {
                 setBrowserVoices(voices);
-                // Set default voice if none is selected
                 if (!selectedBrowserVoiceURI) {
                     const defaultVoice = voices.find(v => v.default) || voices[0];
                     if (defaultVoice) {
@@ -60,10 +80,7 @@ const App: React.FC = () => {
         };
 
         loadVoices();
-        // Voices are often loaded asynchronously
         window.speechSynthesis.onvoiceschanged = loadVoices;
-
-        // Ensure speech is cancelled when the user leaves the page
         const handleBeforeUnload = () => window.speechSynthesis.cancel();
         window.addEventListener('beforeunload', handleBeforeUnload);
         
@@ -76,13 +93,11 @@ const App: React.FC = () => {
 
   // Reset audio when story progresses
   useEffect(() => {
-    // Stop and clear Gemini TTS audio
     if (audioRef.current) {
       audioRef.current.pause();
       URL.revokeObjectURL(audioRef.current.src);
       audioRef.current = null;
     }
-    // Stop and clear Browser TTS audio
     if (browserTtsSupported && (window.speechSynthesis.speaking || window.speechSynthesis.paused)) {
       window.speechSynthesis.cancel();
     }
@@ -90,28 +105,38 @@ const App: React.FC = () => {
     
     setIsPlaying(false);
     setIsTtsLoading(false);
-  }, [storyHistory, browserTtsSupported]);
+  }, [currentNodeId, browserTtsSupported]);
 
 
   const handleStartGame = useCallback(async (initialPrompt: string) => {
     setIsGenerating(true);
-    setStoryHistory([]);
-    setCurrentChoices([]);
+    setStoryNodes({});
+    setRootNodeId(null);
+    setCurrentNodeId(null);
 
     try {
       const [narrativeResult, imageResult] = await Promise.all([
         generateNarrativeAndChoices(initialPrompt, ''),
         generateImage(`${initialPrompt} - detailed cinematic digital painting`)
       ]);
-
-      setStoryHistory([{
-        prompt: initialPrompt,
+      
+      const newNodeId = Date.now().toString();
+      const newStep: StoryStep = {
+        id: newNodeId,
+        parentId: null,
         narrative: narrativeResult.narrative,
         imageUrl: imageResult,
-        choiceMade: ''
-      }]);
-      setCurrentChoices(narrativeResult.choices);
+        choiceMade: 'The Beginning',
+        promptForStep: initialPrompt,
+        choices: narrativeResult.choices,
+        childrenIds: {}
+      };
+      
+      setStoryNodes({ [newNodeId]: newStep });
+      setRootNodeId(newNodeId);
+      setCurrentNodeId(newNodeId);
       setGameState(GameState.Adventure);
+
     } catch (error) {
       console.error("Failed to start saga:", error);
       alert("A strange rift has appeared, preventing your saga from beginning. Please try again.");
@@ -122,49 +147,75 @@ const App: React.FC = () => {
   }, []);
 
   const handleChoiceMade = useCallback(async (choiceText: string) => {
-    if (isGenerating || storyHistory.length === 0) return;
+    if (isGenerating || !currentStep) return;
     
-    setIsGenerating(true);
-    setCurrentChoices([]);
-    const previousStep = storyHistory[storyHistory.length - 1];
+    const existingChildId = currentStep.childrenIds[choiceText];
+    if (existingChildId) {
+      setCurrentNodeId(existingChildId);
+      return;
+    }
 
+    setIsGenerating(true);
+    
     try {
       const imageGenerationPrompt = `${choiceText} - detailed cinematic digital painting`;
       const [narrativeResult, imageResult] = await Promise.all([
-        generateNarrativeAndChoices(previousStep.narrative, choiceText),
-        generateImage(imageGenerationPrompt, previousStep.imageUrl)
+        generateNarrativeAndChoices(currentStep.narrative, choiceText),
+        generateImage(imageGenerationPrompt, currentStep.imageUrl)
       ]);
-
-      const newStep: StoryStep = {
-        prompt: previousStep.narrative,
+      
+      const newChildId = Date.now().toString();
+      const newChildNode: StoryStep = {
+        id: newChildId,
+        parentId: currentStep.id,
         narrative: narrativeResult.narrative,
         imageUrl: imageResult,
-        choiceMade: choiceText
+        choiceMade: choiceText,
+        promptForStep: currentStep.narrative,
+        choices: narrativeResult.choices,
+        childrenIds: {}
       };
 
-      setStoryHistory(prevHistory => [...prevHistory, newStep]);
-      setCurrentChoices(narrativeResult.choices);
+      setStoryNodes(prevNodes => {
+          const updatedParent = { ...prevNodes[currentStep.id] };
+          updatedParent.childrenIds[choiceText] = newChildId;
+          return {
+              ...prevNodes,
+              [currentStep.id]: updatedParent,
+              [newChildId]: newChildNode,
+          };
+      });
+      setCurrentNodeId(newChildId);
+
     } catch (error) {
       console.error("Failed to generate next step:", error);
       alert("The thread of fate has frayed. The saga cannot continue. Please start a new one.");
     } finally {
       setIsGenerating(false);
     }
-  }, [isGenerating, storyHistory]);
+  }, [isGenerating, currentStep, storyNodes]);
+
+  const handleNavigateToStep = useCallback(async (nodeId: string) => {
+    if (isGenerating || nodeId === currentNodeId) {
+      return;
+    }
+    setCurrentNodeId(nodeId);
+  }, [isGenerating, currentNodeId]);
 
   const handleRestart = useCallback(() => {
     setGameState(GameState.Start);
-    setStoryHistory([]);
-    setCurrentChoices([]);
+    setStoryNodes({});
+    setRootNodeId(null);
+    setCurrentNodeId(null);
   }, []);
   
   const handleShowLore = useCallback(async () => {
-    if (storyHistory.length === 0) return;
+    if (!currentStep) return;
     setIsLoreModalOpen(true);
     setIsLoreLoading(true);
     setLoreContent('');
     try {
-      const lore = await generateLore(storyHistory[storyHistory.length - 1].narrative);
+      const lore = await generateLore(currentStep.narrative);
       setLoreContent(lore);
     } catch (error) {
       console.error("Failed to generate lore:", error);
@@ -172,7 +223,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoreLoading(false);
     }
-  }, [storyHistory]);
+  }, [currentStep]);
 
   const handleShowEpilogue = useCallback(async () => {
     if (storyHistory.length === 0) return;
@@ -209,34 +260,25 @@ const App: React.FC = () => {
     }
   };
 
-  // FIX: Moved handleTogglePlayNarrative before handleRestartPlayback to fix a 'used before declaration' error.
   const handleTogglePlayNarrative = useCallback(async () => {
     if (isTtsLoading) return;
-    const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
+    const narrativeText = currentStep?.narrative;
     if (!narrativeText) return;
 
-    // --- Browser TTS Logic (Refactored for stability) ---
     if (ttsEngine === 'browser' && browserTtsSupported) {
-        // State: Paused. Action: Resume.
         if (window.speechSynthesis.paused) {
             window.speechSynthesis.resume();
             return;
         }
-
-        // State: Speaking. Action: Pause.
         if (window.speechSynthesis.speaking) {
             window.speechSynthesis.pause();
             return;
         }
-        
-        // State: Stopped. Action: Speak new utterance.
         const utterance = new SpeechSynthesisUtterance(narrativeText);
         const selectedVoice = browserVoices.find(v => v.voiceURI === selectedBrowserVoiceURI);
         if (selectedVoice) {
             utterance.voice = selectedVoice;
         }
-
-        // Let event handlers exclusively manage the isPlaying state
         utterance.onstart = () => setIsPlaying(true);
         utterance.onend = () => {
             setIsPlaying(false);
@@ -248,14 +290,12 @@ const App: React.FC = () => {
             console.error('SpeechSynthesis Error:', event.error);
             setIsPlaying(false);
         };
-        
         utteranceRef.current = utterance;
-        window.speechSynthesis.cancel(); // Clear any previous utterances before speaking.
+        window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
         return;
     }
 
-    // --- Gemini TTS Logic ---
     if (audioRef.current) {
         if (isPlaying) {
             audioRef.current.pause();
@@ -280,10 +320,10 @@ const App: React.FC = () => {
             setIsTtsLoading(false);
         }
     }
-  }, [storyHistory, isPlaying, isTtsLoading, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI]);
+  }, [currentStep, isPlaying, isTtsLoading, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI]);
 
   const handleRestartPlayback = useCallback(() => {
-    const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
+    const narrativeText = currentStep?.narrative;
     if (!narrativeText) return;
 
     if (ttsEngine === 'gemini') {
@@ -292,11 +332,9 @@ const App: React.FC = () => {
             audioRef.current.play();
             setIsPlaying(true);
         } else {
-            // If audio isn't loaded, trigger the play function to load it
             handleTogglePlayNarrative();
         }
     } else if (browserTtsSupported) {
-        // Restarting is the same as starting fresh
         window.speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(narrativeText);
@@ -318,9 +356,8 @@ const App: React.FC = () => {
         utteranceRef.current = utterance;
         window.speechSynthesis.speak(utterance);
     }
-  }, [storyHistory, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI, handleTogglePlayNarrative]);
+  }, [currentStep, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI, handleTogglePlayNarrative]);
 
-  const currentStep = storyHistory.length > 0 ? storyHistory[storyHistory.length - 1] : null;
   const isAudioLoaded = !!audioRef.current || (browserTtsSupported && (window.speechSynthesis.speaking || window.speechSynthesis.paused));
 
 
@@ -346,6 +383,7 @@ const App: React.FC = () => {
             onRestart={handleRestart}
             onShowLore={handleShowLore}
             onShowEpilogue={handleShowEpilogue}
+            onNavigate={handleNavigateToStep}
             // TTS Props
             onTogglePlayNarrative={handleTogglePlayNarrative}
             onRestartPlayback={handleRestartPlayback}

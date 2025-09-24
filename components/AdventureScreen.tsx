@@ -13,6 +13,7 @@ interface AdventureScreenProps {
   onRestart: () => void;
   onShowLore: () => void;
   onShowEpilogue: () => void;
+  onNavigate: (nodeId: string) => void;
   // TTS Props
   onTogglePlayNarrative: () => void;
   onRestartPlayback: () => void;
@@ -46,6 +47,7 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
   onRestart,
   onShowLore,
   onShowEpilogue,
+  onNavigate,
   onTogglePlayNarrative,
   onRestartPlayback,
   onSelectTtsEngine,
@@ -58,12 +60,18 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
   browserVoices,
   selectedBrowserVoiceURI,
 }) => {
+  const previousStepImage = storyHistory.length > 1 ? storyHistory[storyHistory.length - 2].imageUrl : (storyHistory[0]?.imageUrl || '');
+
   return (
     <main className="animate-fade-in">
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/80 overflow-hidden">
         <div className="relative w-full aspect-video bg-[#EFEAE4] flex items-center justify-center transition-all duration-300">
-            {isGenerating ? (
-                <Spinner size="lg" />
+            {isGenerating && storyHistory.length > 0 ? (
+                <img 
+                    src={previousStepImage} 
+                    alt="Generating next scene..." 
+                    className="w-full h-full object-cover animate-pulse"
+                />
             ) : (
                 <img 
                     key={currentStep.imageUrl}
@@ -131,7 +139,11 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
             Start New Saga
           </button>
         </div>
-        <SagaGallery storyHistory={storyHistory} currentImageUrl={currentStep.imageUrl}/>
+        <SagaGallery 
+          storyHistory={storyHistory} 
+          onNavigate={onNavigate}
+          currentNodeId={currentStep.id}
+        />
       </div>
     </main>
   );
