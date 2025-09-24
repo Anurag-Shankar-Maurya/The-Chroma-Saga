@@ -82,7 +82,7 @@ const App: React.FC = () => {
       audioRef.current = null;
     }
     // Stop and clear Browser TTS audio
-    if (browserTtsSupported && window.speechSynthesis.speaking) {
+    if (browserTtsSupported && (window.speechSynthesis.speaking || window.speechSynthesis.paused)) {
       window.speechSynthesis.cancel();
     }
     utteranceRef.current = null;
@@ -201,7 +201,7 @@ const App: React.FC = () => {
 
   const handleSelectBrowserVoice = (voiceURI: string) => {
     setSelectedBrowserVoiceURI(voiceURI);
-    if (window.speechSynthesis.speaking) {
+    if (window.speechSynthesis.speaking || window.speechSynthesis.paused) {
       window.speechSynthesis.cancel();
       setIsPlaying(false);
     }
@@ -216,17 +216,30 @@ const App: React.FC = () => {
             audioRef.current.currentTime = 0;
             audioRef.current.play();
             setIsPlaying(true);
+        } else {
+            // If audio isn't loaded, trigger the play function to load it
+            handleTogglePlayNarrative();
         }
     } else if (browserTtsSupported) {
+        // Restarting is the same as starting fresh
         window.speechSynthesis.cancel();
-        // Create a new utterance with the same text and voice
+        
         const utterance = new SpeechSynthesisUtterance(narrativeText);
         const selectedVoice = browserVoices.find(v => v.voiceURI === selectedBrowserVoiceURI);
         if (selectedVoice) {
             utterance.voice = selectedVoice;
         }
         utterance.onstart = () => setIsPlaying(true);
-        utterance.onend = () => setIsPlaying(false);
+        utterance.onend = () => {
+          setIsPlaying(false);
+          utteranceRef.current = null;
+        };
+        utterance.onpause = () => setIsPlaying(false);
+        utterance.onresume = () => setIsPlaying(true);
+        utterance.onerror = (e) => {
+          console.error("SpeechSynthesis Error:", e.error);
+          setIsPlaying(false);
+        };
         utteranceRef.current = utterance;
         window.speechSynthesis.speak(utterance);
     }
@@ -237,30 +250,43 @@ const App: React.FC = () => {
     const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
     if (!narrativeText) return;
 
-    // --- Browser TTS Logic ---
+    // --- Browser TTS Logic (Refactored for stability) ---
     if (ttsEngine === 'browser' && browserTtsSupported) {
+        // State: Paused. Action: Resume.
+        if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+            return;
+        }
+
+        // State: Speaking. Action: Pause.
         if (window.speechSynthesis.speaking) {
             window.speechSynthesis.pause();
-            setIsPlaying(false);
-        } else {
-            if (window.speechSynthesis.paused) {
-                window.speechSynthesis.resume();
-                setIsPlaying(true);
-            } else {
-                const utterance = new SpeechSynthesisUtterance(narrativeText);
-                if (selectedBrowserVoiceURI) {
-                    const voice = browserVoices.find(v => v.voiceURI === selectedBrowserVoiceURI);
-                    if (voice) utterance.voice = voice;
-                }
-                utterance.onstart = () => setIsPlaying(true);
-                utterance.onend = () => setIsPlaying(false);
-                utterance.onpause = () => setIsPlaying(false);
-                utterance.onresume = () => setIsPlaying(true);
-                utteranceRef.current = utterance;
-                window.speechSynthesis.cancel();
-                window.speechSynthesis.speak(utterance);
-            }
+            return;
         }
+        
+        // State: Stopped. Action: Speak new utterance.
+        const utterance = new SpeechSynthesisUtterance(narrativeText);
+        const selectedVoice = browserVoices.find(v => v.voiceURI === selectedBrowserVoiceURI);
+        if (selectedVoice) {
+            utterance.voice = selectedVoice;
+        }
+
+        // Let event handlers exclusively manage the isPlaying state
+        utterance.onstart = () => setIsPlaying(true);
+        utterance.onend = () => {
+            setIsPlaying(false);
+            utteranceRef.current = null;
+        };
+        utterance.onpause = () => setIsPlaying(false);
+        utterance.onresume = () => setIsPlaying(true);
+        utterance.onerror = (event) => {
+            console.error('SpeechSynthesis Error:', event.error);
+            setIsPlaying(false);
+        };
+        
+        utteranceRef.current = utterance;
+        window.speechSynthesis.cancel(); // Clear any previous utterances before speaking.
+        window.speechSynthesis.speak(utterance);
         return;
     }
 
@@ -292,7 +318,7 @@ const App: React.FC = () => {
   }, [storyHistory, isPlaying, isTtsLoading, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI]);
 
   const currentStep = storyHistory.length > 0 ? storyHistory[storyHistory.length - 1] : null;
-  const isAudioLoaded = !!audioRef.current || (browserTtsSupported && !!utteranceRef.current);
+  const isAudioLoaded = !!audioRef.current || (browserTtsSupported && (window.speechSynthesis.speaking || window.speechSynthesis.paused));
 
 
   return (
