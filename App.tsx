@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { StartScreen } from './components/StartScreen';
 import { AdventureScreen } from './components/AdventureScreen';
@@ -128,9 +129,10 @@ const App: React.FC = () => {
     const previousStep = storyHistory[storyHistory.length - 1];
 
     try {
+      const imageGenerationPrompt = `${choiceText} - detailed cinematic digital painting`;
       const [narrativeResult, imageResult] = await Promise.all([
         generateNarrativeAndChoices(previousStep.narrative, choiceText),
-        generateImage(`${previousStep.narrative}, ${choiceText} - detailed cinematic digital painting`)
+        generateImage(imageGenerationPrompt, previousStep.imageUrl)
       ]);
 
       const newStep: StoryStep = {
@@ -207,44 +209,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRestartPlayback = useCallback(() => {
-    const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
-    if (!narrativeText) return;
-
-    if (ttsEngine === 'gemini') {
-        if (audioRef.current) {
-            audioRef.current.currentTime = 0;
-            audioRef.current.play();
-            setIsPlaying(true);
-        } else {
-            // If audio isn't loaded, trigger the play function to load it
-            handleTogglePlayNarrative();
-        }
-    } else if (browserTtsSupported) {
-        // Restarting is the same as starting fresh
-        window.speechSynthesis.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(narrativeText);
-        const selectedVoice = browserVoices.find(v => v.voiceURI === selectedBrowserVoiceURI);
-        if (selectedVoice) {
-            utterance.voice = selectedVoice;
-        }
-        utterance.onstart = () => setIsPlaying(true);
-        utterance.onend = () => {
-          setIsPlaying(false);
-          utteranceRef.current = null;
-        };
-        utterance.onpause = () => setIsPlaying(false);
-        utterance.onresume = () => setIsPlaying(true);
-        utterance.onerror = (e) => {
-          console.error("SpeechSynthesis Error:", e.error);
-          setIsPlaying(false);
-        };
-        utteranceRef.current = utterance;
-        window.speechSynthesis.speak(utterance);
-    }
-  }, [storyHistory, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI]);
-
+  // FIX: Moved handleTogglePlayNarrative before handleRestartPlayback to fix a 'used before declaration' error.
   const handleTogglePlayNarrative = useCallback(async () => {
     if (isTtsLoading) return;
     const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
@@ -316,6 +281,44 @@ const App: React.FC = () => {
         }
     }
   }, [storyHistory, isPlaying, isTtsLoading, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI]);
+
+  const handleRestartPlayback = useCallback(() => {
+    const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
+    if (!narrativeText) return;
+
+    if (ttsEngine === 'gemini') {
+        if (audioRef.current) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.play();
+            setIsPlaying(true);
+        } else {
+            // If audio isn't loaded, trigger the play function to load it
+            handleTogglePlayNarrative();
+        }
+    } else if (browserTtsSupported) {
+        // Restarting is the same as starting fresh
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(narrativeText);
+        const selectedVoice = browserVoices.find(v => v.voiceURI === selectedBrowserVoiceURI);
+        if (selectedVoice) {
+            utterance.voice = selectedVoice;
+        }
+        utterance.onstart = () => setIsPlaying(true);
+        utterance.onend = () => {
+          setIsPlaying(false);
+          utteranceRef.current = null;
+        };
+        utterance.onpause = () => setIsPlaying(false);
+        utterance.onresume = () => setIsPlaying(true);
+        utterance.onerror = (e) => {
+          console.error("SpeechSynthesis Error:", e.error);
+          setIsPlaying(false);
+        };
+        utteranceRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+    }
+  }, [storyHistory, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI, handleTogglePlayNarrative]);
 
   const currentStep = storyHistory.length > 0 ? storyHistory[storyHistory.length - 1] : null;
   const isAudioLoaded = !!audioRef.current || (browserTtsSupported && (window.speechSynthesis.speaking || window.speechSynthesis.paused));

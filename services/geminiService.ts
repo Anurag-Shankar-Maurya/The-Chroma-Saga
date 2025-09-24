@@ -9,6 +9,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const textModel = 'gemini-2.5-flash';
 const imageModel = 'imagen-4.0-generate-001';
+const imageEditModel = 'gemini-2.5-flash-image-preview';
 const ttsModel = 'gemini-2.5-flash-preview-tts';
 
 const narrativeSchema = {
@@ -116,26 +117,66 @@ export const generateNarrativeAndChoices = async (previousPrompt: string, choice
   }
 };
 
-export const generateImage = async (prompt: string): Promise<string> => {
+export const generateImage = async (prompt: string, previousImageUrl?: string): Promise<string> => {
+  // Case 1: Initial image generation (text-to-image)
+  if (!previousImageUrl) {
+    try {
+      const response = await ai.models.generateImages({
+          model: imageModel,
+          prompt: prompt,
+          config: {
+            numberOfImages: 1,
+            outputMimeType: 'image/jpeg',
+            aspectRatio: '16:9',
+          },
+      });
+
+      if (response.generatedImages && response.generatedImages.length > 0) {
+          const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+          return `data:image/jpeg;base64,${base64ImageBytes}`;
+      }
+      throw new Error("No image data received from text-to-image API.");
+    } catch (error) {
+      console.error('Error generating initial image:', error);
+      throw new Error('Failed to generate initial image from Gemini API.');
+    }
+  }
+
+  // Case 2: Subsequent image generation (image-to-image)
   try {
-    const response = await ai.models.generateImages({
-        model: imageModel,
-        prompt: prompt,
-        config: {
-          numberOfImages: 1,
-          outputMimeType: 'image/jpeg',
-          aspectRatio: '16:9',
+    const mimeType = previousImageUrl.substring(previousImageUrl.indexOf(":") + 1, previousImageUrl.indexOf(";"));
+    const base64Data = previousImageUrl.split(',')[1];
+
+    const imagePart = {
+        inlineData: {
+            mimeType: mimeType,
+            data: base64Data,
         },
+    };
+
+    const textPart = { text: prompt };
+
+    const response = await ai.models.generateContent({
+        model: imageEditModel,
+        contents: { parts: [imagePart, textPart] },
+        config:{
+            responseModalities: [Modality.IMAGE, Modality.TEXT],
+        }
     });
 
-    if (response.generatedImages && response.generatedImages.length > 0) {
-        const base64ImageBytes = response.generatedImages[0].image.imageBytes;
-        return `data:image/jpeg;base64,${base64ImageBytes}`;
+    for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+            const base64ImageBytes: string = part.inlineData.data;
+            const imageMimeType = part.inlineData.mimeType;
+            return `data:${imageMimeType};base64,${base64ImageBytes}`;
+        }
     }
-    throw new Error("No image data received from API.");
+    
+    throw new Error("No image data received from image-to-image API.");
+
   } catch (error) {
-    console.error('Error generating image:', error);
-    throw new Error('Failed to generate image from Gemini API.');
+    console.error('Error generating subsequent image:', error);
+    throw new Error('Failed to generate subsequent image from Gemini API.');
   }
 };
 
