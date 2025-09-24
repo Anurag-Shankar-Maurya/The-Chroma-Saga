@@ -1,11 +1,10 @@
-
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { StartScreen } from './components/StartScreen';
 import { AdventureScreen } from './components/AdventureScreen';
 import { Modal } from './components/Modal';
 import { Spinner } from './components/Spinner';
 import type { StoryStep, Choice } from './types';
-import { generateNarrativeAndChoices, generateImage, generateLore, generateEpilogue } from './services/geminiService';
+import { generateNarrativeAndChoices, generateImage, generateLore, generateEpilogue, generateTtsAudio } from './services/geminiService';
 
 enum GameState {
   Start,
@@ -25,6 +24,23 @@ const App: React.FC = () => {
   const [isEpilogueModalOpen, setIsEpilogueModalOpen] = useState<boolean>(false);
   const [epilogueContent, setEpilogueContent] = useState<string>('');
   const [isEpilogueLoading, setIsEpilogueLoading] = useState<boolean>(false);
+
+  // TTS State
+  const [isTtsLoading, setIsTtsLoading] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Reset audio when story progresses
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      URL.revokeObjectURL(audioRef.current.src);
+      audioRef.current = null;
+    }
+    setIsPlaying(false);
+    setIsTtsLoading(false);
+  }, [storyHistory]);
+
 
   const handleStartGame = useCallback(async (initialPrompt: string) => {
     setIsGenerating(true);
@@ -122,6 +138,37 @@ const App: React.FC = () => {
     }
   }, [storyHistory]);
 
+  const handleTogglePlayNarrative = useCallback(async () => {
+    if (isTtsLoading) return;
+    const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
+    if (!narrativeText) return;
+
+    if (audioRef.current) {
+        if (isPlaying) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+        } else {
+            audioRef.current.play();
+            setIsPlaying(true);
+        }
+    } else {
+        setIsTtsLoading(true);
+        try {
+            const audioUrl = await generateTtsAudio(narrativeText);
+            const audio = new Audio(audioUrl);
+            audioRef.current = audio;
+            audio.addEventListener('ended', () => setIsPlaying(false));
+            audio.play();
+            setIsPlaying(true);
+        } catch (error) {
+            console.error("Failed to play narrative:", error);
+            alert("The storyteller's voice falters. Please try again.");
+        } finally {
+            setIsTtsLoading(false);
+        }
+    }
+  }, [storyHistory, isPlaying, isTtsLoading]);
+
   const currentStep = storyHistory.length > 0 ? storyHistory[storyHistory.length - 1] : null;
 
   return (
@@ -146,6 +193,9 @@ const App: React.FC = () => {
             onRestart={handleRestart}
             onShowLore={handleShowLore}
             onShowEpilogue={handleShowEpilogue}
+            onTogglePlayNarrative={handleTogglePlayNarrative}
+            isTtsLoading={isTtsLoading}
+            isPlaying={isPlaying}
           />
         )}
         

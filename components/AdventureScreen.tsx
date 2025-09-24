@@ -1,7 +1,7 @@
-
 import React from 'react';
 import { SagaGallery } from './SagaGallery';
 import { Spinner } from './Spinner';
+import { AudioButton } from './AudioButton';
 import type { StoryStep, Choice } from '../types';
 
 interface AdventureScreenProps {
@@ -13,6 +13,9 @@ interface AdventureScreenProps {
   onRestart: () => void;
   onShowLore: () => void;
   onShowEpilogue: () => void;
+  onTogglePlayNarrative: () => void;
+  isTtsLoading: boolean;
+  isPlaying: boolean;
 }
 
 const ChoiceButton: React.FC<{ text: string; onClick: () => void; disabled: boolean }> = ({ text, onClick, disabled }) => (
@@ -34,6 +37,9 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
   onRestart,
   onShowLore,
   onShowEpilogue,
+  onTogglePlayNarrative,
+  isTtsLoading,
+  isPlaying,
 }) => {
   return (
     <main className="animate-fade-in">
@@ -74,6 +80,11 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
             )}
           </div>
            <div className="flex items-center gap-2 mt-4">
+              <AudioButton
+                onClick={onTogglePlayNarrative}
+                isLoading={isTtsLoading}
+                isPlaying={isPlaying}
+              />
               <button onClick={onShowLore} className="text-sm font-bold text-[#4A443E] rounded-full p-2 hover:bg-[#D1C7BC]/60 transition-all duration-200 shrink-0">
                   ✨ Discover Lore
               </button>
