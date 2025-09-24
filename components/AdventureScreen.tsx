@@ -14,6 +14,9 @@ interface AdventureScreenProps {
   onShowLore: () => void;
   onShowEpilogue: () => void;
   onNavigate: (nodeId: string) => void;
+  // New props for tree view
+  storyNodes: { [id: string]: StoryStep };
+  rootNodeId: string | null;
   // TTS Props
   onTogglePlayNarrative: () => void;
   onRestartPlayback: () => void;
@@ -48,6 +51,8 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
   onShowLore,
   onShowEpilogue,
   onNavigate,
+  storyNodes,
+  rootNodeId,
   onTogglePlayNarrative,
   onRestartPlayback,
   onSelectTtsEngine,
@@ -143,6 +148,8 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
           storyHistory={storyHistory} 
           onNavigate={onNavigate}
           currentNodeId={currentStep.id}
+          storyNodes={storyNodes}
+          rootNodeId={rootNodeId}
         />
       </div>
     </main>

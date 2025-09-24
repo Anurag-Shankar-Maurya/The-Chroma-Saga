@@ -384,6 +384,8 @@ const App: React.FC = () => {
             onShowLore={handleShowLore}
             onShowEpilogue={handleShowEpilogue}
             onNavigate={handleNavigateToStep}
+            storyNodes={storyNodes}
+            rootNodeId={rootNodeId}
             // TTS Props
             onTogglePlayNarrative={handleTogglePlayNarrative}
             onRestartPlayback={handleRestartPlayback}
