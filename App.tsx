@@ -33,20 +33,45 @@ const App: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // Check for browser TTS support on mount
+  // Browser TTS Voice State
+  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedBrowserVoiceURI, setSelectedBrowserVoiceURI] = useState<string | null>(null);
+
+
+  // Check for browser TTS support and load voices on mount
   useEffect(() => {
     const isSupported = 'speechSynthesis' in window && typeof window.speechSynthesis !== 'undefined';
     setBrowserTtsSupported(isSupported);
 
-    // Ensure speech is cancelled when the user leaves the page
-    const handleBeforeUnload = () => {
-      if (isSupported) {
-        window.speechSynthesis.cancel();
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
+    if (isSupported) {
+        const loadVoices = () => {
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                setBrowserVoices(voices);
+                // Set default voice if none is selected
+                if (!selectedBrowserVoiceURI) {
+                    const defaultVoice = voices.find(v => v.default) || voices[0];
+                    if (defaultVoice) {
+                      setSelectedBrowserVoiceURI(defaultVoice.voiceURI);
+                    }
+                }
+            }
+        };
+
+        loadVoices();
+        // Voices are often loaded asynchronously
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+
+        // Ensure speech is cancelled when the user leaves the page
+        const handleBeforeUnload = () => window.speechSynthesis.cancel();
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        
+        return () => {
+            window.speechSynthesis.onvoiceschanged = null;
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }
+  }, [selectedBrowserVoiceURI]);
 
   // Reset audio when story progresses
   useEffect(() => {
@@ -174,6 +199,14 @@ const App: React.FC = () => {
     setTtsEngine(engine);
   }, [browserTtsSupported]);
 
+  const handleSelectBrowserVoice = (voiceURI: string) => {
+    setSelectedBrowserVoiceURI(voiceURI);
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
+    }
+  };
+
   const handleRestartPlayback = useCallback(() => {
     const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
     if (!narrativeText) return;
@@ -185,12 +218,19 @@ const App: React.FC = () => {
             setIsPlaying(true);
         }
     } else if (browserTtsSupported) {
-        if (utteranceRef.current) {
-            window.speechSynthesis.cancel();
-            window.speechSynthesis.speak(utteranceRef.current);
+        window.speechSynthesis.cancel();
+        // Create a new utterance with the same text and voice
+        const utterance = new SpeechSynthesisUtterance(narrativeText);
+        const selectedVoice = browserVoices.find(v => v.voiceURI === selectedBrowserVoiceURI);
+        if (selectedVoice) {
+            utterance.voice = selectedVoice;
         }
+        utterance.onstart = () => setIsPlaying(true);
+        utterance.onend = () => setIsPlaying(false);
+        utteranceRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
     }
-  }, [storyHistory, ttsEngine, browserTtsSupported]);
+  }, [storyHistory, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI]);
 
   const handleTogglePlayNarrative = useCallback(async () => {
     if (isTtsLoading) return;
@@ -208,6 +248,10 @@ const App: React.FC = () => {
                 setIsPlaying(true);
             } else {
                 const utterance = new SpeechSynthesisUtterance(narrativeText);
+                if (selectedBrowserVoiceURI) {
+                    const voice = browserVoices.find(v => v.voiceURI === selectedBrowserVoiceURI);
+                    if (voice) utterance.voice = voice;
+                }
                 utterance.onstart = () => setIsPlaying(true);
                 utterance.onend = () => setIsPlaying(false);
                 utterance.onpause = () => setIsPlaying(false);
@@ -245,10 +289,10 @@ const App: React.FC = () => {
             setIsTtsLoading(false);
         }
     }
-  }, [storyHistory, isPlaying, isTtsLoading, ttsEngine, browserTtsSupported]);
+  }, [storyHistory, isPlaying, isTtsLoading, ttsEngine, browserTtsSupported, browserVoices, selectedBrowserVoiceURI]);
 
   const currentStep = storyHistory.length > 0 ? storyHistory[storyHistory.length - 1] : null;
-  const isAudioLoaded = !!audioRef.current || !!utteranceRef.current;
+  const isAudioLoaded = !!audioRef.current || (browserTtsSupported && !!utteranceRef.current);
 
 
   return (
@@ -277,11 +321,14 @@ const App: React.FC = () => {
             onTogglePlayNarrative={handleTogglePlayNarrative}
             onRestartPlayback={handleRestartPlayback}
             onSelectTtsEngine={handleSelectTtsEngine}
+            onSelectBrowserVoice={handleSelectBrowserVoice}
             isTtsLoading={isTtsLoading}
             isPlaying={isPlaying}
             isAudioLoaded={isAudioLoaded}
             ttsEngine={ttsEngine}
             browserTtsSupported={browserTtsSupported}
+            browserVoices={browserVoices}
+            selectedBrowserVoiceURI={selectedBrowserVoiceURI}
           />
         )}
         

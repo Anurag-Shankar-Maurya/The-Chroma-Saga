@@ -6,11 +6,14 @@ interface AudioControlsProps {
   onTogglePlay: () => void;
   onRestart: () => void;
   onSelectEngine: (engine: TtsEngine) => void;
+  onSelectBrowserVoice: (voiceURI: string) => void;
   isLoading: boolean;
   isPlaying: boolean;
   isAudioLoaded: boolean;
   currentEngine: TtsEngine;
   isBrowserTtsSupported: boolean;
+  browserVoices: SpeechSynthesisVoice[];
+  selectedBrowserVoiceURI: string | null;
 }
 
 // SVG Icons
@@ -19,7 +22,19 @@ const PauseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" heigh
 const RestartIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fillRule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>;
 const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 0 1 0 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105 0l.17.31c.698 1.283 2.686.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 0-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105 0l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.858 2.929 2.929 0 0 1 0 5.858z"/></svg>;
 
-export const AudioControls: React.FC<AudioControlsProps> = ({ onTogglePlay, onRestart, onSelectEngine, isLoading, isPlaying, isAudioLoaded, currentEngine, isBrowserTtsSupported }) => {
+export const AudioControls: React.FC<AudioControlsProps> = ({ 
+    onTogglePlay, 
+    onRestart, 
+    onSelectEngine, 
+    onSelectBrowserVoice,
+    isLoading, 
+    isPlaying, 
+    isAudioLoaded, 
+    currentEngine, 
+    isBrowserTtsSupported,
+    browserVoices,
+    selectedBrowserVoiceURI
+}) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +50,8 @@ export const AudioControls: React.FC<AudioControlsProps> = ({ onTogglePlay, onRe
   
   const handleEngineSelect = (engine: TtsEngine) => {
     onSelectEngine(engine);
-    setIsSettingsOpen(false);
+    // Keep settings open to allow voice selection
+    // setIsSettingsOpen(false); 
   };
 
   return (
@@ -66,7 +82,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({ onTogglePlay, onRe
           <SettingsIcon />
         </button>
         {isSettingsOpen && (
-          <div className="absolute bottom-full right-0 mb-2 w-40 bg-white rounded-lg shadow-xl border border-gray-200 z-10 p-1">
+          <div className="absolute bottom-full right-0 mb-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 p-1">
             <p className="text-xs text-gray-500 px-2 pt-1 pb-2">Narrator Voice</p>
             <button
               onClick={() => handleEngineSelect('gemini')}
@@ -80,6 +96,24 @@ export const AudioControls: React.FC<AudioControlsProps> = ({ onTogglePlay, onRe
             >
               Browser (Fast)
             </button>
+
+            {currentEngine === 'browser' && browserVoices.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-200">
+                     <label htmlFor="voice-select" className="text-xs text-gray-500 px-2 pb-2 block">Browser Voice</label>
+                     <select
+                        id="voice-select"
+                        value={selectedBrowserVoiceURI || ''}
+                        onChange={(e) => onSelectBrowserVoice(e.target.value)}
+                        className="w-full text-sm px-2 py-1.5 rounded-md border-gray-300 bg-white focus:ring-1 focus:ring-[#C8BBAE] focus:border-[#C8BBAE] text-gray-800"
+                     >
+                        {browserVoices.map((voice) => (
+                            <option key={voice.voiceURI} value={voice.voiceURI}>
+                                {voice.name} ({voice.lang})
+                            </option>
+                        ))}
+                     </select>
+                </div>
+            )}
           </div>
         )}
       </div>

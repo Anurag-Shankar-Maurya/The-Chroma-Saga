@@ -17,11 +17,14 @@ interface AdventureScreenProps {
   onTogglePlayNarrative: () => void;
   onRestartPlayback: () => void;
   onSelectTtsEngine: (engine: TtsEngine) => void;
+  onSelectBrowserVoice: (voiceURI: string) => void;
   isTtsLoading: boolean;
   isPlaying: boolean;
   isAudioLoaded: boolean;
   ttsEngine: TtsEngine;
   browserTtsSupported: boolean;
+  browserVoices: SpeechSynthesisVoice[];
+  selectedBrowserVoiceURI: string | null;
 }
 
 const ChoiceButton: React.FC<{ text: string; onClick: () => void; disabled: boolean }> = ({ text, onClick, disabled }) => (
@@ -46,11 +49,14 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
   onTogglePlayNarrative,
   onRestartPlayback,
   onSelectTtsEngine,
+  onSelectBrowserVoice,
   isTtsLoading,
   isPlaying,
   isAudioLoaded,
   ttsEngine,
   browserTtsSupported,
+  browserVoices,
+  selectedBrowserVoiceURI,
 }) => {
   return (
     <main className="animate-fade-in">
@@ -95,11 +101,14 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
                 onTogglePlay={onTogglePlayNarrative}
                 onRestart={onRestartPlayback}
                 onSelectEngine={onSelectTtsEngine}
+                onSelectBrowserVoice={onSelectBrowserVoice}
                 isLoading={isTtsLoading}
                 isPlaying={isPlaying}
                 isAudioLoaded={isAudioLoaded}
                 currentEngine={ttsEngine}
                 isBrowserTtsSupported={browserTtsSupported}
+                browserVoices={browserVoices}
+                selectedBrowserVoiceURI={selectedBrowserVoiceURI}
               />
               <div className="flex items-center gap-2">
                 <button onClick={onShowLore} className="text-sm font-bold text-[#4A443E] rounded-full p-2 hover:bg-[#D1C7BC]/60 transition-all duration-200 shrink-0">
