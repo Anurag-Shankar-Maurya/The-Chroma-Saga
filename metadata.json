@@ -1,0 +1,5 @@
+{
+  "name": "The Chroma-Saga: A React AI Adventure",
+  "description": "An interactive, choice-driven visual story powered by Gemini. Users provide an initial prompt to generate a world, and then guide the narrative by making choices that dynamically alter the story and its accompanying visuals, creating a unique saga with each playthrough.",
+  "requestFramePermissions": []
+}
