@@ -3,7 +3,7 @@ import { StartScreen } from './components/StartScreen';
 import { AdventureScreen } from './components/AdventureScreen';
 import { Modal } from './components/Modal';
 import { Spinner } from './components/Spinner';
-import type { StoryStep, Choice } from './types';
+import type { StoryStep, Choice, TtsEngine } from './types';
 import { generateNarrativeAndChoices, generateImage, generateLore, generateEpilogue, generateTtsAudio } from './services/geminiService';
 
 enum GameState {
@@ -26,20 +26,45 @@ const App: React.FC = () => {
   const [isEpilogueLoading, setIsEpilogueLoading] = useState<boolean>(false);
 
   // TTS State
+  const [ttsEngine, setTtsEngine] = useState<TtsEngine>('gemini');
+  const [browserTtsSupported, setBrowserTtsSupported] = useState(false);
   const [isTtsLoading, setIsTtsLoading] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Check for browser TTS support on mount
+  useEffect(() => {
+    const isSupported = 'speechSynthesis' in window && typeof window.speechSynthesis !== 'undefined';
+    setBrowserTtsSupported(isSupported);
+
+    // Ensure speech is cancelled when the user leaves the page
+    const handleBeforeUnload = () => {
+      if (isSupported) {
+        window.speechSynthesis.cancel();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   // Reset audio when story progresses
   useEffect(() => {
+    // Stop and clear Gemini TTS audio
     if (audioRef.current) {
       audioRef.current.pause();
       URL.revokeObjectURL(audioRef.current.src);
       audioRef.current = null;
     }
+    // Stop and clear Browser TTS audio
+    if (browserTtsSupported && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+    utteranceRef.current = null;
+    
     setIsPlaying(false);
     setIsTtsLoading(false);
-  }, [storyHistory]);
+  }, [storyHistory, browserTtsSupported]);
 
 
   const handleStartGame = useCallback(async (initialPrompt: string) => {
@@ -138,11 +163,64 @@ const App: React.FC = () => {
     }
   }, [storyHistory]);
 
+  const handleSelectTtsEngine = useCallback((engine: TtsEngine) => {
+    if (audioRef.current) {
+        audioRef.current.pause();
+    }
+    if (browserTtsSupported) {
+        window.speechSynthesis.cancel();
+    }
+    setIsPlaying(false);
+    setTtsEngine(engine);
+  }, [browserTtsSupported]);
+
+  const handleRestartPlayback = useCallback(() => {
+    const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
+    if (!narrativeText) return;
+
+    if (ttsEngine === 'gemini') {
+        if (audioRef.current) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.play();
+            setIsPlaying(true);
+        }
+    } else if (browserTtsSupported) {
+        if (utteranceRef.current) {
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utteranceRef.current);
+        }
+    }
+  }, [storyHistory, ttsEngine, browserTtsSupported]);
+
   const handleTogglePlayNarrative = useCallback(async () => {
     if (isTtsLoading) return;
     const narrativeText = storyHistory[storyHistory.length - 1]?.narrative;
     if (!narrativeText) return;
 
+    // --- Browser TTS Logic ---
+    if (ttsEngine === 'browser' && browserTtsSupported) {
+        if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.pause();
+            setIsPlaying(false);
+        } else {
+            if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+                setIsPlaying(true);
+            } else {
+                const utterance = new SpeechSynthesisUtterance(narrativeText);
+                utterance.onstart = () => setIsPlaying(true);
+                utterance.onend = () => setIsPlaying(false);
+                utterance.onpause = () => setIsPlaying(false);
+                utterance.onresume = () => setIsPlaying(true);
+                utteranceRef.current = utterance;
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+        return;
+    }
+
+    // --- Gemini TTS Logic ---
     if (audioRef.current) {
         if (isPlaying) {
             audioRef.current.pause();
@@ -167,9 +245,11 @@ const App: React.FC = () => {
             setIsTtsLoading(false);
         }
     }
-  }, [storyHistory, isPlaying, isTtsLoading]);
+  }, [storyHistory, isPlaying, isTtsLoading, ttsEngine, browserTtsSupported]);
 
   const currentStep = storyHistory.length > 0 ? storyHistory[storyHistory.length - 1] : null;
+  const isAudioLoaded = !!audioRef.current || !!utteranceRef.current;
+
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -193,9 +273,15 @@ const App: React.FC = () => {
             onRestart={handleRestart}
             onShowLore={handleShowLore}
             onShowEpilogue={handleShowEpilogue}
+            // TTS Props
             onTogglePlayNarrative={handleTogglePlayNarrative}
+            onRestartPlayback={handleRestartPlayback}
+            onSelectTtsEngine={handleSelectTtsEngine}
             isTtsLoading={isTtsLoading}
             isPlaying={isPlaying}
+            isAudioLoaded={isAudioLoaded}
+            ttsEngine={ttsEngine}
+            browserTtsSupported={browserTtsSupported}
           />
         )}
         

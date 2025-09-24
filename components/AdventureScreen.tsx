@@ -1,8 +1,8 @@
 import React from 'react';
 import { SagaGallery } from './SagaGallery';
 import { Spinner } from './Spinner';
-import { AudioButton } from './AudioButton';
-import type { StoryStep, Choice } from '../types';
+import { AudioControls } from './AudioControls';
+import type { StoryStep, Choice, TtsEngine } from '../types';
 
 interface AdventureScreenProps {
   isGenerating: boolean;
@@ -13,9 +13,15 @@ interface AdventureScreenProps {
   onRestart: () => void;
   onShowLore: () => void;
   onShowEpilogue: () => void;
+  // TTS Props
   onTogglePlayNarrative: () => void;
+  onRestartPlayback: () => void;
+  onSelectTtsEngine: (engine: TtsEngine) => void;
   isTtsLoading: boolean;
   isPlaying: boolean;
+  isAudioLoaded: boolean;
+  ttsEngine: TtsEngine;
+  browserTtsSupported: boolean;
 }
 
 const ChoiceButton: React.FC<{ text: string; onClick: () => void; disabled: boolean }> = ({ text, onClick, disabled }) => (
@@ -38,8 +44,13 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
   onShowLore,
   onShowEpilogue,
   onTogglePlayNarrative,
+  onRestartPlayback,
+  onSelectTtsEngine,
   isTtsLoading,
   isPlaying,
+  isAudioLoaded,
+  ttsEngine,
+  browserTtsSupported,
 }) => {
   return (
     <main className="animate-fade-in">
@@ -79,20 +90,27 @@ export const AdventureScreen: React.FC<AdventureScreenProps> = ({
                 ))
             )}
           </div>
-           <div className="flex items-center gap-2 mt-4">
-              <AudioButton
-                onClick={onTogglePlayNarrative}
+           <div className="flex items-center gap-4 mt-4">
+              <AudioControls
+                onTogglePlay={onTogglePlayNarrative}
+                onRestart={onRestartPlayback}
+                onSelectEngine={onSelectTtsEngine}
                 isLoading={isTtsLoading}
                 isPlaying={isPlaying}
+                isAudioLoaded={isAudioLoaded}
+                currentEngine={ttsEngine}
+                isBrowserTtsSupported={browserTtsSupported}
               />
-              <button onClick={onShowLore} className="text-sm font-bold text-[#4A443E] rounded-full p-2 hover:bg-[#D1C7BC]/60 transition-all duration-200 shrink-0">
-                  ✨ Discover Lore
-              </button>
-              {storyHistory.length >= 3 && (
-                  <button onClick={onShowEpilogue} className="text-sm font-bold text-[#4A443E] rounded-full p-2 hover:bg-[#D1C7BC]/60 transition-all duration-200 shrink-0">
-                      ✨ Epilogue
-                  </button>
-              )}
+              <div className="flex items-center gap-2">
+                <button onClick={onShowLore} className="text-sm font-bold text-[#4A443E] rounded-full p-2 hover:bg-[#D1C7BC]/60 transition-all duration-200 shrink-0">
+                    ✨ Discover Lore
+                </button>
+                {storyHistory.length >= 3 && (
+                    <button onClick={onShowEpilogue} className="text-sm font-bold text-[#4A443E] rounded-full p-2 hover:bg-[#D1C7BC]/60 transition-all duration-200 shrink-0">
+                        ✨ Epilogue
+                    </button>
+                )}
+              </div>
             </div>
         </div>
       </div>

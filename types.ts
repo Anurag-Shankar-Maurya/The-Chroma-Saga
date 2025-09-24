@@ -14,3 +14,5 @@ export interface NarrativeResponse {
   narrative: string;
   choices: Choice[];
 }
+
+export type TtsEngine = 'gemini' | 'browser';
