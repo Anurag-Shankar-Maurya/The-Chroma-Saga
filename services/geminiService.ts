@@ -8,9 +8,8 @@ if (!process.env.API_KEY) {
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const textModel = 'gemini-2.5-flash';
-// FIX: Use correct models for image generation and editing.
-const imageGenerationModel = 'imagen-4.0-generate-001';
-const imageEditingModel = 'gemini-2.5-flash-image-preview';
+// UPDATED: Use gemini-2.5-flash-image-preview for both generation and editing
+const imageModel = 'gemini-2.5-flash-image-preview';
 const ttsModel = 'gemini-2.5-flash-preview-tts';
 
 const narrativeSchema = {
@@ -118,12 +117,12 @@ export const generateNarrativeAndChoices = async (previousPrompt: string, choice
   }
 };
 
-// FIX: Refactor to use the correct Gemini API for image generation vs. image editing.
-// `generateImages` with `imagen-4.0-generate-001` is used for new images.
-// `generateContent` with `gemini-2.5-flash-image-preview` is used for editing existing images.
+// UPDATED: Refactored to use 'gemini-2.5-flash-image-preview' for both new image generation and editing.
 export const generateImage = async (prompt: string, previousImageUrl?: string): Promise<string> => {
   try {
-    // If there's a previous image, it's an image editing task.
+    const parts: any[] = [];
+    
+    // If there's a previous image, add it as the first part for editing.
     if (previousImageUrl) {
       const mimeType = previousImageUrl.substring(previousImageUrl.indexOf(":") + 1, previousImageUrl.indexOf(";"));
       const base64Data = previousImageUrl.split(',')[1];
@@ -133,41 +132,29 @@ export const generateImage = async (prompt: string, previousImageUrl?: string): 
           data: base64Data,
         },
       };
-
-      const response = await ai.models.generateContent({
-        model: imageEditingModel,
-        contents: { parts: [imagePart, { text: prompt }] },
-        config: {
-          responseModalities: [Modality.IMAGE, Modality.TEXT],
-        }
-      });
-
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          const base64ImageBytes: string = part.inlineData.data;
-          const imageMimeType = part.inlineData.mimeType;
-          return `data:${imageMimeType};base64,${base64ImageBytes}`;
-        }
-      }
-      
-      throw new Error("No image data received from image editing API.");
-    } else { // Otherwise, it's a new image generation task.
-      const response = await ai.models.generateImages({
-        model: imageGenerationModel,
-        prompt: prompt,
-        config: {
-          numberOfImages: 1,
-          outputMimeType: 'image/png',
-        },
-      });
-
-      if (response.generatedImages?.[0]?.image?.imageBytes) {
-        const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
-        return `data:image/png;base64,${base64ImageBytes}`;
-      }
-      
-      throw new Error("No image data received from image generation API.");
+      parts.push(imagePart);
     }
+    
+    // Add the text prompt as the next part.
+    parts.push({ text: prompt });
+
+    const response = await ai.models.generateContent({
+      model: imageModel,
+      contents: { parts: parts },
+      config: {
+        responseModalities: [Modality.IMAGE, Modality.TEXT],
+      }
+    });
+
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+        const base64ImageBytes: string = part.inlineData.data;
+        const imageMimeType = part.inlineData.mimeType;
+        return `data:${imageMimeType};base64,${base64ImageBytes}`;
+      }
+    }
+    
+    throw new Error("No image data received from the image generation API.");
 
   } catch (error) {
     console.error('Error generating image:', error);
